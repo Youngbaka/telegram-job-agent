@@ -25,19 +25,25 @@ def send_telegram_message(text):
         "parse_mode": "HTML",
         "disable_web_page_preview": True
     }
-    requests.post(url, json=payload)
+    res = requests.post(url, json=payload)
+    print(f"Telegram API response ({res.status_code}): {res.text}")
+    return res.status_code == 200
 
 def scan_jobs():
     seen_jobs = load_seen_jobs()
-    # Fetching from Remotive's free public API
+    print(f"Loaded {len(seen_jobs)} seen jobs.")
+    
     response = requests.get("https://remotive.com/api/remote-jobs?limit=50")
     jobs = response.json().get("jobs", [])
+    print(f"Fetched {len(jobs)} jobs from Remotive.")
 
+    matches_sent = 0
     for job in jobs:
         job_id = str(job["id"])
         title = job["title"].lower()
         
         if job_id not in seen_jobs and any(kw in title for kw in KEYWORDS):
+            print(f"Match found: {job['title']} (ID: {job_id})")
             msg = (
                 f"🚨 <b>New Job Match!</b>\n\n"
                 f"<b>Role:</b> {job['title']}\n"
@@ -45,8 +51,11 @@ def scan_jobs():
                 f"<b>Location:</b> {job['candidate_required_location']}\n"
                 f"🔗 <a href='{job['url']}'>Apply Here</a>"
             )
-            send_telegram_message(msg)
-            save_seen_job(job_id)
+            if send_telegram_message(msg):
+                save_seen_job(job_id)
+                matches_sent += 1
+
+    print(f"Total new matches sent: {matches_sent}")
 
 if __name__ == "__main__":
     scan_jobs()
