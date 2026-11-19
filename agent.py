@@ -46,21 +46,13 @@ def save_seen_job(job_id):
 
 def is_nigeria_eligible(location_str):
     loc = (location_str or "").lower().strip()
-    
-    # RemoteOK leaves location blank when a role is open worldwide
     if not loc:
         return True
-
-    # Always allow if Nigeria, Africa, or Worldwide is explicitly stated
-    if any(ok in loc for ok in ["nigeria", "africa", "worldwide", "global", "anywhere"]):
+    if any(ok in loc for ok in ["worldwide", "global", "anywhere", "africa", "nigeria", "emea"]):
         return True
-
-    # Reject if locked to a restricted country or region
-    if any(bad in loc for bad in BLOCKED_LOCATIONS):
-        return False
-
-    # Otherwise allow if it says EMEA or generic Remote
-    return any(ok in loc for ok in ALLOWED_LOCATIONS)
+    if "remote" in loc and not any(bad in loc for bad in ["us", "u.s.", "united states", "uk", "united kingdom", "canada", "europe", "eu", "germany", "ireland", "australia", "latam"]):
+        return True
+    return False
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
