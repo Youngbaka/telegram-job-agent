@@ -4,13 +4,34 @@ import requests
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# Expanded keywords covering AI/ML, Data, QA, Annotation & Tech roles
+# Core roles high in demand for remote Nigerian talent
 KEYWORDS = [
     "python", "backend", "ai", "data analyst", "data",
     "annotation", "annotator", "rlhf", "llm", "trainer",
-    "evaluation", "evaluator", "quality", "qa", "agent",
-    "operations", "analyst", "prompt"
+    "evaluation", "evaluator", "quality", "qa", "ai agent",
+    "operations", "analyst", "prompt", "frontend", "fullstack"
 ]
+
+# Filter out irrelevant roles that trigger broad keywords
+EXCLUDE_KEYWORDS = [
+    "real estate", "insurance", "travel agent", "call center",
+    "field", "on-site", "onsite", "warehouse", "driver"
+]
+
+# Regions that exclude Nigerian applicants
+BLOCKED_LOCATIONS = [
+    "usa", "u.s.", "united states", "us only", "us-only", "north america",
+    "canada", "uk", "united kingdom", "europe", "eu only", "eu-only",
+    "germany", "berlin", "munich", "france", "spain", "netherlands",
+    "australia", "latam", "brazil", "mexico", "argentina", "india",
+    "philippines", "est only", "pst only", "cst only", "us timezone"
+]
+
+# Regions open to Nigerian applicants
+ALLOWED_LOCATIONS = [
+    "worldwide", "global", "anywhere", "africa", "nigeria", "emea", "remote"
+]
+
 SEEN_FILE = "seen_jobs.txt"
 
 def load_seen_jobs():
@@ -22,6 +43,24 @@ def load_seen_jobs():
 def save_seen_job(job_id):
     with open(SEEN_FILE, "a") as f:
         f.write(f"{job_id}\n")
+
+def is_nigeria_eligible(location_str):
+    loc = (location_str or "").lower().strip()
+    
+    # RemoteOK leaves location blank when a role is open worldwide
+    if not loc:
+        return True
+
+    # Always allow if Nigeria, Africa, or Worldwide is explicitly stated
+    if any(ok in loc for ok in ["nigeria", "africa", "worldwide", "global", "anywhere"]):
+        return True
+
+    # Reject if locked to a restricted country or region
+    if any(bad in loc for bad in BLOCKED_LOCATIONS):
+        return False
+
+    # Otherwise allow if it says EMEA or generic Remote
+    return any(ok in loc for ok in ALLOWED_LOCATIONS)
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -44,7 +83,7 @@ def fetch_remotive():
                 "id": f"remotive_{j['id']}",
                 "title": j.get("title", ""),
                 "company": j.get("company_name", "Unknown"),
-                "location": j.get("candidate_required_location", "Remote"),
+                "location": j.get("candidate_required_location", "Worldwide") or "Worldwide",
                 "url": j.get("url", ""),
                 "source": "Remotive"
             }
@@ -58,7 +97,7 @@ def fetch_remoteok():
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         res = requests.get("https://remoteok.com/api", headers=headers, timeout=15)
-        jobs = res.json()[1:]  # First element is metadata
+        jobs = res.json()[1:]
         return [
             {
                 "id": f"remoteok_{j['id']}",
@@ -105,21 +144,31 @@ def scan_jobs():
         job_id = str(job["id"])
         title_lower = job["title"].lower()
 
-        if job_id not in seen_jobs and any(kw in title_lower for kw in KEYWORDS):
-            print(f"Match found [{job['source']}]: {job['title']} (ID: {job_id})")
-            msg = (
-                f"🚨 <b>New Job Match ({job['source']})!</b>\n\n"
-                f"<b>Role:</b> {job['title']}\n"
-                f"<b>Company:</b> {job['company']}\n"
-                f"<b>Location:</b> {job['location']}\n"
-                f"🔗 <a href='{job['url']}'>Apply Here</a>"
-            )
-            if send_telegram_message(msg):
-                save_seen_job(job_id)
-                seen_jobs.add(job_id)
-                matches_sent += 1
+        if job_id in seen_jobs:
+            continue
+        if any(bad_kw in title_lower for bad_kw in EXCLUDE_KEYWORDS):
+            continue
+        if not any(kw in title_lower for kw in KEYWORDS):
+            continue
+        if not is_nigeria_eligible(job["location"]):
+            print(f"Skipped (Location restricted - {job['location']}): {job['title']}")
+            continue
 
-    print(f"Total new matches sent: {matches_sent}")
+        print(f"Match found [{job['source']}]: {job['title']} ({job['location']})")
+        msg = (
+            f"🇳🇬🌍 <b>New Remote Job (Nigeria Eligible)</b>\n\n"
+            f"💼 <b>Role:</b> {job['title']}\n"
+            f"🏢 <b>Company:</b> {job['company']}\n"
+            f"📍 <b>Location:</b> {job['location']}\n"
+            f"🔎 <b>Source:</b> {job['source']}\n\n"
+            f"👉 <a href='{job['url']}'>Apply Directly Here</a>"
+        )
+        if send_telegram_message(msg):
+            save_seen_job(job_id)
+            seen_jobs.add(job_id)
+            matches_sent += 1
+
+    print(f"Total new Nigeria-eligible matches sent: {matches_sent}")
 
 if __name__ == "__main__":
     scan_jobs()
